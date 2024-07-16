@@ -4,67 +4,29 @@ Examples
 Computing and drawing visibility graphs
 ---------------------------------------
 
-This example builds the visibility graph for a generated Brownian motion time series
+This example builds the visibility graph for a randomly generated motion time series
 and draws the graph with the help of `NetworkX <https://networkx.github.io/>`_.
 
-.. code:: python
+.. literalinclude:: examples/basic.py
+    :language: python
 
-    from ts2vg import NaturalVG
-    import networkx as nx
-    import numpy as np
-    import matplotlib.pyplot as plt
 
-    # 1. Generate Brownian motion series
-    rng = np.random.default_rng(110)
-    ts = rng.standard_normal(size=200)
-    ts = np.cumsum(ts)
-
-    # 2. Build visibility graph
-    g = NaturalVG(directed=None).build(ts)
-    nxg = g.as_networkx()
-
-    # 3. Make plots
-    fig, [ax0, ax1, ax2] = plt.subplots(ncols=3, figsize=(12, 3.5))
-
-    ax0.plot(ts)
-    ax0.set_title('Time Series')
-
-    graph_plot_options = {
-        'with_labels': False,
-        'node_size': 2,
-        'node_color': [(0, 0, 0, 1)],
-        'edge_color': [(0, 0, 0, 0.15)],
-    }
-
-    nx.draw_networkx(nxg, ax=ax1, pos=g.node_positions(), **graph_plot_options)
-    ax1.tick_params(bottom=True, labelbottom=True)
-    ax1.plot(ts)
-    ax1.set_title('Visibility Graph')
-
-    nx.draw_networkx(nxg, ax=ax2, pos=nx.kamada_kawai_layout(nxg), **graph_plot_options)
-    ax2.set_title('Visibility Graph')
-
-.. figure:: images/example_process.png
+.. figure:: examples/basic.png
    :width: 100%
-   :alt: Example plot of a visibility graph
+   :alt: Example plots of a visibility graph
 
 
-Getting the adjacency matrix
-----------------------------
+Obtaining the adjacency matrix
+------------------------------
 
 This example shows how to obtain the adjacency matrix for the visibility graph of a time series.
 
 See :meth:`adjacency_matrix() <ts2vg.NaturalVG.adjacency_matrix>` for more options.
 
-.. code:: python
 
-    from ts2vg import NaturalVG
+.. literalinclude:: examples/adjacency_matrix.py
+    :language: python
 
-    ts = [6., 3., 1.8, 4.2, 6., 3., 1.8, 4.8]
-
-    g = NaturalVG().build(ts)
-
-    g.adjacency_matrix(triangle='lower')
 
 ::
 
@@ -78,164 +40,144 @@ See :meth:`adjacency_matrix() <ts2vg.NaturalVG.adjacency_matrix>` for more optio
        [0, 0, 0, 0, 1, 1, 1, 0]], dtype=uint8)
 
 
-Getting the degree distribution
--------------------------------
+Obtaining the degree distribution
+---------------------------------
 
 This example shows how to get the degree distribution for the visibility graph of a given time series.
 
-To illustrate it, we generate a Brownian motion time series with 100.000 data points
-and then compute and plot its degree distribution.
-
-.. code:: python
-
-    from ts2vg import NaturalVG
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    # 1. Generate Brownian motion series
-    rng = np.random.default_rng(0)
-    ts = rng.standard_normal(size=100_000)
-    ts = np.cumsum(ts)
-
-    # 2. Build visibility graph
-    g = NaturalVG().build(ts, only_degrees=True)
-
-    # 3. Get degree distribution
-    ks, ps = g.degree_distribution
-
-    # 4. Make plots
-    fig, [ax0, ax1, ax2] = plt.subplots(ncols=3, figsize=(12, 3.5))
-
-    ax0.plot(ts, c='#000', linewidth=1)
-    ax0.set_title('Time Series')
-    ax0.set_xlabel('t')
-
-    ax1.scatter(ks, ps, s=2, c='#000', alpha=1)
-    ax1.set_title('Degree Distribution')
-    ax1.set_xlabel('k')
-    ax1.set_ylabel('P(k)')
-
-    ax2.scatter(ks, ps, s=2, c='#000', alpha=1)
-    ax2.set_yscale('log')
-    ax2.set_xscale('log')
-    ax2.set_title('Degree Distribution (log-log)')
-    ax2.set_xlabel('k')
-    ax2.set_ylabel('P(k)')
+Here, we generate a random time series with 100.000 data points and then compute and plot its degree distribution.
 
 
-.. figure:: images/example_degree_distribution.svg
+.. literalinclude:: examples/degree_distribution.py
+    :language: python
+
+
+.. figure:: examples/degree_distribution.svg
     :width: 100%
     :alt: Example degree distribution
 
 
-Directed graphs
----------------
+Building directed graphs
+------------------------
 
 This example illustrates different options for the ``directed`` parameter when building visibility graphs.
 
-.. code:: python
 
-    from ts2vg import NaturalVG
-    import matplotlib.pyplot as plt
-
-    ts = [6., 3., 1.8, 4.2, 6., 3., 1.8, 4.8]
-
-    direction_options = [
-        None,
-        'left_to_right',
-        'top_to_bottom',
-    ]
-
-    fig, axs = plt.subplots(ncols=3, figsize=(12, 3.5))
-
-    for d, ax in zip(direction_options, axs.flat):
-        g = NaturalVG(directed=d).build(ts)
-        plot_graph_demo(g, ax=ax, title=f"directed={repr(d)}")
+.. literalinclude:: examples/directed.py
+    :language: python
+    :start-after: # ~~
 
 
-.. figure:: images/example_directed.svg
+.. figure:: examples/directed.svg
    :width: 100%
    :alt: Example directed graphs
 
 
-.. admonition:: Code for :meth:`plot_graph_demo`
-   :class: toggle
+.. admonition:: Code for :meth:`plot_nvg`
+   :class: dropdown
 
-    .. literalinclude:: misc/plot_graph_demo.py
+    .. literalinclude:: examples/plot_utils.py
         :language: python
+        :start-after: # ~~ plot_nvg
+        :end-before: # $$
 
 
-Weighted graphs
----------------
+Building weighted graphs
+------------------------
 
 This example illustrates different options for the ``weighted`` parameter when building visibility graphs.
+See :ref:`Weighted graphs` for a complete list of available values for ``weighted``.
 
-.. code:: python
-
-    from ts2vg import NaturalVG
-    import matplotlib.pyplot as plt
-
-    ts = [6., 3., 1.8, 4.2, 6., 3., 1.8, 4.8]
-    weight_options = [
-        'slope',
-        'abs_slope',
-        'distance',
-        'h_distance',
-        'v_distance',
-        'abs_v_distance',
-    ]
-
-    fig, axs = plt.subplots(ncols=3, nrows=2, figsize=(12, 6))
-    cbar_ax = fig.add_axes([0.96, 0.2, 0.01, 0.6])
-
-    for w, ax in zip(weight_options, axs.flat):
-        g = NaturalVG(weighted=w).build(ts)
-        plot_graph_demo(g, ax=ax, title=f"weighted='{w}'", cbar_ax=cbar_ax)
+.. literalinclude:: examples/weighted.py
+    :language: python
+    :start-after: # ~~
 
 
-.. figure:: images/example_weighted.svg
+.. figure:: examples/weighted.svg
    :width: 100%
    :alt: Example weighted graphs
 
 
-.. admonition:: Code for :meth:`plot_graph_demo`
-   :class: toggle
+.. admonition:: Code for :meth:`plot_weighted_nvg`
+   :class: dropdown
 
-    .. literalinclude:: misc/plot_graph_demo.py
+    .. literalinclude:: examples/plot_utils.py
         :language: python
+        :start-after: # ~~ plot_weighted_nvg
+        :end-before: # $$
 
 
-Horizontal visibility graphs
-----------------------------
+Building horizontal visibility graphs
+-------------------------------------
 
-This example illustrates different options for horizontal visiblity graphs.
+This example illustrates different options for horizontal visibility graphs.
+Note that horizontal visibility graphs can also be directed and/or weighted.
 
-.. code:: python
+.. literalinclude:: examples/horizontal.py
+    :language: python
+    :start-after: # ~~
 
-    from ts2vg import HorizontalVG
-    import matplotlib.pyplot as plt
 
-    ts = [6., 3., 1.8, 4.2, 6., 3., 1.8, 4.8]
-
-    direction_options = [
-        None,
-        'left_to_right',
-        'top_to_bottom',
-    ]
-
-    fig, axs = plt.subplots(ncols=3, figsize=(12, 3.5))
-
-    for d, ax in zip(direction_options, axs.flat):
-        g = HorizontalVG(directed=d).build(ts)
-        plot_graph_demo(g, ax=ax, title=f"directed={repr(d)}", arrow_heads=True)
-
-.. figure:: images/example_horizontal.svg
+.. figure:: examples/horizontal.svg
    :width: 100%
    :alt: Example horizontal visibility graphs
 
 
-.. admonition:: Code for :meth:`plot_graph_demo`
-   :class: toggle
+.. admonition:: Code for :meth:`plot_utils`
+   :class: dropdown
 
-    .. literalinclude:: misc/plot_graph_demo.py
+    .. literalinclude:: examples/plot_utils.py
         :language: python
+        :start-after: # ~~ plot_hvg
+        :end-before: # $$
+
+
+Building limited penetrable visibility graphs
+---------------------------------------------
+
+Limited penetrable visibility graphs (LPVG) are a variation of visibility graphs
+in which nodes are allowed to have a certain number of obstructions between them
+and still have a connecting edge in the resulting graph.
+Limited penetrable visibility graphs might be more robust to noise in the data.
+
+The maximum number of data points that are allowed to obstruct two nodes is given by the
+``penetrable_limit`` parameter.
+Note that when ``penetrable_limit`` is 0, the behavior is exactly the same as a regular (non-penetrable) visibility graph.
+
+
+.. literalinclude:: examples/penetrable.py
+    :language: python
+    :start-after: # ~~
+
+
+.. figure:: examples/penetrable.svg
+   :width: 100%
+   :alt: Example limited penetrable visibility graphs
+
+
+.. admonition:: Code for :meth:`plot_nvg`, :meth:`plot_hvg`
+   :class: dropdown
+
+    .. literalinclude:: examples/plot_utils.py
+        :language: python
+        :start-after: # ~~ plot_nvg
+        :end-before: # $$
+
+    .. literalinclude:: examples/plot_utils.py
+        :language: python
+        :start-after: # ~~ plot_hvg
+        :end-before: # $$
+
+
+Partitioning time series via community detection
+------------------------------------------------
+
+Time series can be partitioned by applying community detection algorithms to their visibility graphs.
+
+.. literalinclude:: examples/partitioning.py
+    :language: python
+
+
+.. figure:: examples/partitioning.png
+   :width: 100%
+   :alt: Example partitioning of visibility graphs

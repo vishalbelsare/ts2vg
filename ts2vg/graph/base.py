@@ -1,24 +1,27 @@
 import numpy as np
 from typing import Optional
 
+from ts2vg.graph.summary import simple_summary
+
 _DIRECTED_OPTIONS = {
     None: 0,
-    'left_to_right': 1,
-    'top_to_bottom': 2,
+    "left_to_right": 1,
+    "top_to_bottom": 2,
 }
 
 _WEIGHTED_OPTIONS = {
     None: 0,
-    'distance': 1,
-    'sq_distance': 2,
-    'v_distance': 3,
-    'abs_v_distance': 4,
-    'h_distance': 5,
-    'abs_h_distance': 6,
-    'slope': 7,
-    'abs_slope': 8,
-    'angle': 9,
-    'abs_angle': 10,
+    "distance": 1,
+    "sq_distance": 2,
+    "v_distance": 3,
+    "abs_v_distance": 4,
+    "h_distance": 5,
+    "abs_h_distance": 6,
+    "slope": 7,
+    "abs_slope": 8,
+    "angle": 9,
+    "abs_angle": 10,
+    "num_penetrations": 11,
 }
 
 
@@ -29,21 +32,29 @@ class NotBuiltError(Exception):
     """
 
 
-class BaseVG:
+class VG:
     """
     Abstract class for a visibility graph (VG).
-    
+
     .. caution::
         Should not be used directly, use one of the subclasses instead,
         e.g :class:`ts2vg.NaturalVG` or :class:`ts2vg.HorizontalVG`.
-
-    Args:
-        ts (list of values, or 1d numpy array): Time series data to use as input for the visibility graph.
     """
-    def __init__(self, *, directed: Optional[str] = None, weighted: Optional[str] = None):
+
+    _general_type_name = "Visibility Graph"
+
+    def __init__(
+        self,
+        *,
+        directed: Optional[str] = None,
+        weighted: Optional[str] = None,
+        min_weight: Optional[float] = None,
+        max_weight: Optional[float] = None,
+        penetrable_limit: int = 0,
+    ):
         self.ts = None
         """1D array of the time series. ``None`` if the graph has not been built yet."""
-    
+
         self.xs = None
         """1D array of the X coordinates of the time series. ``None`` if the graph has not been built yet."""
 
@@ -54,18 +65,37 @@ class BaseVG:
         self._degrees_out = None
 
         if directed not in _DIRECTED_OPTIONS:
-            raise ValueError(f"Invalid 'directed' parameter: {directed}. Must be one of {list(_DIRECTED_OPTIONS.keys())}")
+            raise ValueError(
+                f"Invalid 'directed' parameter: {directed}. Must be one of {list(_DIRECTED_OPTIONS.keys())}"
+            )
 
         self.directed = directed
         """`str` indicating the strategy used for the edge directions (same as passed to the constructor). ``None`` if the graph is undirected."""
         self._directed = _DIRECTED_OPTIONS[directed]
 
         if weighted not in _WEIGHTED_OPTIONS:
-            raise ValueError(f"Invalid 'weighted' parameter: {weighted}. Must be one of {list(_WEIGHTED_OPTIONS.keys())}.")
+            raise ValueError(
+                f"Invalid 'weighted' parameter: {weighted}. Must be one of {list(_WEIGHTED_OPTIONS.keys())}."
+            )
 
         self.weighted = weighted
         """`str` indicating the strategy used for the edge weights (same as passed to the constructor). ``None`` if the graph is unweighted."""
         self._weighted = _WEIGHTED_OPTIONS[weighted]
+
+        if weighted is None and min_weight is not None:
+            raise ValueError("'min_weight' can only be used in weighted graphs.")
+
+        self.min_weight = min_weight
+
+        if weighted is None and max_weight is not None:
+            raise ValueError("'max_weight' can only be used in weighted graphs.")
+
+        self.max_weight = max_weight
+
+        if penetrable_limit < 0:
+            raise ValueError(f"'penetrable_limit' cannot be negative (got {penetrable_limit}).")
+
+        self.penetrable_limit = penetrable_limit
 
     def _validate_is_built(self):
         if self._edges is None:
@@ -85,7 +115,7 @@ class BaseVG:
             Length of ``xs`` must match length of ``ts``.
 
             If not provided, ``[0, 1, 2...]`` will be used.
-        
+
         only_degrees : bool
             If ``True`` only compute the graph degrees, otherwise compute the whole graph.
             Default ``False``.
@@ -116,9 +146,17 @@ class BaseVG:
         if only_degrees and self.is_weighted:
             raise ValueError("Building with 'only_degrees' is only supported for unweighted graphs.")
 
+        if len(ts) == 0:
+            # empty time series results in an empty graph
+            self._edges = None if only_degrees else []
+            self._degrees_in = np.zeros(0, dtype=np.uint32)
+            self._degrees_out = np.zeros(0, dtype=np.uint32)
+            self._degrees = np.zeros(0, dtype=np.uint32)
+            return self
+
         self._edges, self._degrees_in, self._degrees_out = self._compute_graph(only_degrees)
         self._degrees = self._degrees_in + self._degrees_out
-        
+
         if only_degrees:  # `_compute_graph` doesn't return valid edges when only_degrees=True
             self._edges = None
 
@@ -159,20 +197,37 @@ class BaseVG:
     @property
     def edges(self):
         """
-        List of edges of the graph.
+        List of edges (links) of the graph.
 
-        Return the graph edges as an iterable of pairs of integers
-        where each integer corresponds to a node id (assigned sequentially in the same order as the input time series).
+        If the graph is unweighted, a list of tuple pairs `(source_node, target_node)`.
+        If the graph is weighted, an iterable of tuple triplets `(source_node, target_node, weight)`.
 
-        If the graph is weighted, a third value is included for each edge corresponding to its weight.
+        Nodes are identified using an integer from 0 to *n*-1 assigned sequentially in the same order as the input time series.
         """
         self._validate_is_built()
 
         return self._edges
 
     @property
+    def edges_unweighted(self):
+        """
+        List of edges (links) of the graph without including the weights.
+
+        A list of tuple pairs `(source_node, target_node)`.
+        For unweighted graphs this is the same as :attr:`edges`.
+
+        Nodes are identified using an integer from 0 to *n*-1 assigned sequentially in the same order as the input time series.
+        """
+        self._validate_is_built()
+
+        if not self.is_weighted:
+            return self.edges
+
+        return [(source_node, target_node) for (source_node, target_node, _) in self.edges]
+
+    @property
     def _edges_array(self):
-        arr = np.asarray(self._edges, dtype='int64')  # could be 'uint64' but then it breaks np.bincount
+        arr = np.asarray(self._edges, dtype="int64")  # could be 'uint64' but then it breaks np.bincount
 
         if self.is_weighted:
             return arr[:, :2]
@@ -188,11 +243,11 @@ class BaseVG:
         ``None`` if the graph is unweighted.
         """
         self._validate_is_built()
-        
+
         if self.weighted is None:
             return None
-        
-        return np.fromiter((w for (_, _, w) in self.edges), dtype='float64', count=self.n_edges)
+
+        return np.fromiter((w for (_, _, w) in self.edges), dtype="float64", count=self.n_edges)
 
     @property
     def degrees(self):
@@ -248,7 +303,7 @@ class BaseVG:
 
         return ks, ps
 
-    def adjacency_matrix(self, triangle='both', use_weights=False, no_weight_value=np.nan):
+    def adjacency_matrix(self, triangle="both", use_weights=False, no_weight_value=np.nan):
         """
         Adjacency matrix of the graph.
 
@@ -269,10 +324,10 @@ class BaseVG:
 
             Default ``False``.
 
-        no_weight_value : float 
+        no_weight_value : float
             The default value used in the matrix for the cases where the nodes are not connected.
             Only applicable for weighted graphs and when using ``use_weights=True``.
-            
+
             Default ``np.nan``.
 
         Returns
@@ -281,7 +336,12 @@ class BaseVG:
             Adjacency matrix of the graph.
 
         """
-        if triangle not in ['lower', 'upper', 'both']:
+        self._validate_is_built()
+
+        if triangle != "both" and self.is_directed:
+            raise ValueError(f"'triangle' value '{triangle}' not valid for directed graphs.")
+
+        if triangle not in ["lower", "upper", "both"]:
             raise ValueError(f"'triangle' must be one of 'lower', 'upper', 'both'. Got '{triangle}'.")
 
         if use_weights and not self.is_weighted:
@@ -291,42 +351,44 @@ class BaseVG:
         w = self.weights
 
         if self.is_weighted and use_weights:
-            m = np.full((self.n_vertices, self.n_vertices), fill_value=no_weight_value, dtype='float64')
+            m = np.full((self.n_vertices, self.n_vertices), fill_value=no_weight_value, dtype="float64")
             if self.is_directed:
                 m[e[:, 0], e[:, 1]] = w
             else:
-                if triangle == 'both' or triangle == 'upper':
+                if triangle == "both" or triangle == "upper":
                     m[e[:, 0], e[:, 1]] = w
-                
-                if triangle == 'both' or triangle == 'lower':
+
+                if triangle == "both" or triangle == "lower":
                     m[e[:, 1], e[:, 0]] = w
         else:
-            m = np.zeros((self.n_vertices, self.n_vertices), dtype='uint8')
+            m = np.zeros((self.n_vertices, self.n_vertices), dtype="uint8")
             if self.is_directed:
                 m[e[:, 0], e[:, 1]] = 1
             else:
-                if triangle == 'both' or triangle == 'upper':
+                if triangle == "both" or triangle == "upper":
                     m[e[:, 0], e[:, 1]] = 1
-                
-                if triangle == 'both' or triangle == 'lower':
+
+                if triangle == "both" or triangle == "lower":
                     m[e[:, 1], e[:, 0]] = 1
-        
+
         return m
 
     def as_igraph(self):
         """
         Return an `igraph <https://igraph.org/python/>`_ graph object corresponding to this graph.
-        
+
         The ``igraph`` package is required.
         """
         self._validate_is_built()
 
         from igraph import Graph
 
-        g = Graph.TupleList(
-            self.edges,
-            edge_attrs='weight' if self.is_weighted else None,
-            directed=self.is_directed
+        g = Graph(
+            n=self.n_vertices,
+            edges=self.edges_unweighted,
+            vertex_attrs={"name": range(self.n_vertices)},
+            edge_attrs={"weight": self.weights} if self.is_weighted else {},
+            directed=self.is_directed,
         )
 
         return g
@@ -334,7 +396,7 @@ class BaseVG:
     def as_networkx(self):
         """
         Return a `NetworkX <https://networkx.github.io/>`_ graph object corresponding to this graph.
-        
+
         The ``networkx`` package is required.
         """
         self._validate_is_built()
@@ -346,6 +408,8 @@ class BaseVG:
         else:
             g = Graph()
 
+        g.add_nodes_from(range(self.n_vertices))
+
         if self.is_weighted:
             g.add_weighted_edges_from(self.edges)
         else:
@@ -356,7 +420,7 @@ class BaseVG:
     def as_snap(self):
         """
         Return a `SNAP <https://snap.stanford.edu/snappy/>`_ graph object corresponding to this graph.
-        
+
         The ``snap`` package is required.
         """
         self._validate_is_built()
@@ -364,7 +428,7 @@ class BaseVG:
         from snap import TUNGraph, TNGraph
 
         if self.is_weighted:
-            raise ValueError("SNAP weighted graphs not currently supported.")
+            raise NotImplementedError("SNAP weighted graphs not currently supported.")
 
         if self.is_directed:
             g = TNGraph.New(self.n_vertices, self.n_edges)
@@ -386,13 +450,30 @@ class BaseVG:
 
         return {i: (self.xs[i], self.ts[i]) for i in range(self.n_vertices)}
 
-    def summary(self):
+    def summary(self, prints: bool = True, title: str = "Visibility Graph"):
         """
-        Short text summary describing the graph.
+        Prints (or returns) a simple text summary describing the visibility graph.
+
+        Parameters
+        ----------
+        prints : bool
+            If ``True`` prints the summary, otherwise returns the summary as a string.
+            Default ``True``.
+
+        title : str
+            Title for the table. Default is 'Visibility Graph'.
 
         Returns
         -------
         str
-            A string containing the short summary.
+            A string containing the short summary (only if ``prints=False``).
         """
-        raise NotImplementedError
+        text = simple_summary(self, title=title)
+
+        if prints:
+            print(text)
+        else:
+            return text
+
+    # def _compute_graph(self):
+    #     raise NotImplementedError()
