@@ -7,6 +7,15 @@ on:
     branches: [main]
     types: [published]
   workflow_dispatch:
+    inputs:
+      build_versions:
+        description: 'Python versions to build.'
+        type: string
+        default: 'cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*'
+      skip_existing:
+        description: 'Skip publishing existing releases.'
+        type: boolean
+        default: false
 
 jobs:
   build-wheels:
@@ -14,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-12]
+        os: [ubuntu-24.04, windows-2022, macos-14]
 
     steps:
       - name: Checkout
@@ -26,11 +35,11 @@ jobs:
           python-version: '3.12'
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.19.2
+        uses: pypa/cibuildwheel@v3.2.1
         with:
           output-dir: dist
         env:
-          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+          CIBW_BUILD: ${{ inputs.build_versions }}
           CIBW_ARCHS_WINDOWS: auto
           CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_ARCHS_LINUX: auto
@@ -88,3 +97,4 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
           packages-dir: dist
+          skip-existing: ${{ inputs.skip_existing || false }}
